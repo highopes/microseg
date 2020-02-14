@@ -14,6 +14,9 @@ Required <br>
 * Python 2.7+ <br>
 * ACI and compatible ACI Cobra SDK <br>
 
+Optional
+* AppDynamics 4.3+
+
 ## Usage
 
 Directly running the script with ‘python microseg.py’, the usage tips will be shown. 
