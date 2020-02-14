@@ -3,9 +3,10 @@
 #                           Written by Wei, Hang                                  #
 #                             hangwe@cisco.com                                    #
 ###################################################################################
-"""This application helps to build a zero-trust environment that micro-segments
+"""
+This application helps to build a zero-trust environment that micro-segments
 an existing EPG of an ACI. The segmentation is based on analytics from  AppDynamics
-(First phase the analytics results are manually pre-configed)
+(It can also support manual pre-configuration)
 """
 import argparse
 import requests
@@ -15,21 +16,27 @@ import cobra.mit.request
 import cobra.model.pol
 import cobra.model.fv
 import cobra.model.vmm
+import os
 from credentials import *
+from appdata import *
 
 # use argparse to provide optional arguments and a help menu
-cli_args = argparse.ArgumentParser("Micro-segmentation", "Micro-segment existing EPG into uEPGs based on AppD.",
-                                   "Required: Tenant, Application Profile")
+cli_args = argparse.ArgumentParser("Micro-segmentation",
+                                   "Micro-segment existing EPG into uEPGs based on AppD or JSON files.",
+                                   "Required: Tenant, Application Profile; Optional: Application Name in AppD")
 cli_args.add_argument('-t', '--tenant', required=True,
                       help="The Existing Tenant's Name.")
-cli_args.add_argument('-a', '--application', required=True,
+cli_args.add_argument('-p', '--approfile', required=True,
                       help="The Existing Application Profile's Name.")
+cli_args.add_argument('-a', '--application', required=False,
+                      help="The Existing Application's Name. If omitted, you need JSON files for definition.")
 
 # use argparse to parse arguments into variables
 args = cli_args.parse_args()
 
 TENANT = vars(args)['tenant']
-APNAME = vars(args)['application']
+APNAME = vars(args)['approfile']
+APPLICATION = vars(args)['application']
 
 
 def test_err(tenant_name, ap_name, apic_session):
@@ -55,6 +62,17 @@ def test_err(tenant_name, ap_name, apic_session):
     if not apic_session.query(ap_query):
         print("\nApplication Profile {} doesn't exist!\n".format(ap_name))
         exit(1)
+
+
+def readfile(filename):
+    """
+    This function is to read the file at current directory and convert it to python data
+    """
+    here = os.path.abspath(os.path.dirname(__file__))
+    with open(os.path.join(here, filename)) as file:
+        json_text = file.read()
+
+    return json.loads(json_text)
 
 
 def get_BDname(tenant_name, ap_name, apic_session):
@@ -84,23 +102,28 @@ def get_VMM(tenant_name, ap_name, apic_session):
     return vmm_dn
 
 
-def get_AppD(tenant_name, ap_name):
+def get_AppD(application):
     """
     This function is to return the tier flow context of the application analyzed by AppDynamics 
     """
-    ## TODO: call AppD ##
-    appdict = {"Web": ["172.16.1.14", "172.16.1.15", "172.16.1.16"], "App": ["172.16.1.24"], "DB": ["172.16.1.34"]}
+    ## TODO: manually input form JSON ##
+    if not application:
+        appdict = readfile("app_mapping.json")
+    else:
+        appdict = get_appdict(application)
     return appdict
 
 
-def get_Relationships(tenant_name, ap_name):
+def get_Relationships(application):
     """
     This function is to return the relationships between uEPGs
     """
-    ## TODO: call AppD ##
-    rs = {"Web": {"app2web": ["consume"]}, "App": {"db2app": ["consume"], "app2web": ["provide"]},
-          "DB": {"db2app": ["provide"]}}
-    return rs
+    if not application:
+        relation = readfile("tier_relationship.json")
+    else:
+        ## TODO: call AppD ##
+        relation = {"coursefront": {"app2web": ["consume"]}, "coursefund": {"app2web": ["provide"]}}
+    return relation
 
 
 def main():
@@ -121,8 +144,8 @@ def main():
     BDNAME = get_BDname(TENANT, APNAME, md)
     EPGNAME = get_baseEPG(TENANT, APNAME, md)
     VMMDN = get_VMM(TENANT, APNAME, md)
-    APPD = get_AppD(TENANT, APNAME)
-    RELATIONSHIPS = get_Relationships(TENANT, APNAME)
+    APPD = get_AppD(APPLICATION)
+    RELATIONSHIPS = get_Relationships(APPLICATION)
 
     # the top level object on which operations will be made
     polUni = cobra.model.pol.Uni('')
